@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # Notiforward for macOS
 # Copyright Jordan Mann
 # Last Updated 28 April 2020
@@ -9,23 +10,13 @@ from datetime import datetime
 from xml.etree.ElementTree import fromstring as parseXML
 import sched, time
 import requests
-from sys import argv, maxsize
+from sys import argv, maxsize, stdout
 import argparse, os
 
 # I have been writing a lot of Java and am probably not supposed to
 # put everything into one class like this.
 class Notification:
-    @staticmethod
-    def splash():
-        print("""
-  _   _       _   _ _____             _ 
- | \ | | ___ | |_(_)  ___|_      ____| |
- |  \| |/ _ \| __| | |_  \ \ /\ / / _` |
- | |\  | (_) | |_| |  _|  \ V  V / (_| |
- |_| \_|\___/ \__|_|_|     \_/\_/ \__,_|
-
-notifwd by Jordan Mann. Starting up... """, end="")
-
+    
     @staticmethod
     def usage():
         print("""
@@ -57,11 +48,17 @@ usage: notifwd [-h] [-s] [--api-key PROWL_API_KEY] [--frequency FREQ]
             parser.error("frequency must be a positive integer.")
 
 # Need error handling for freq, and to incorporate silent.
-        
+
+        print("""
+  _   _       _   _ _____             _ 
+ | \ | | ___ | |_(_)  ___|_      ____| |
+ |  \| |/ _ \| __| | |_  \ \ /\ / / _` |
+ | |\  | (_) | |_| |  _|  \ V  V / (_| |
+ |_| \_|\___/ \__|_|_|     \_/\_/ \__,_|
+
+notifwd by Jordan Mann. Starting up... """, end="")
         Notification.API_KEY = args.api_key
         Notification.FREQ = args.frequency
-        
-        Notification.splash()
         # Get the system temp directory macOS is caching to.
         tmp_path = subprocess.run(["getconf", "DARWIN_USER_DIR"], stdout=subprocess.PIPE).stdout
         # Locate the database; start SQLite.
@@ -85,15 +82,17 @@ usage: notifwd [-h] [-s] [--api-key PROWL_API_KEY] [--frequency FREQ]
                 if notification.date > Notification.last_sent_date:
                     notification.send()
                     Notification.last_sent_date = notification.date
+            stdout.flush() # Need this when running in thread.
             # Schedule to run periodically.
             s.enter(Notification.FREQ, 1, check_recents, (s,))
         # Schedule to run on start.
         s.enter(0, 1, check_recents, (s,))
         try:
             print("Starting scheduler. Update frequency is", Notification.FREQ, "seconds and checking last", 5, "notifications...", end="")
+            stdout.flush() # Need this when running in thread.
             s.run()
         except KeyboardInterrupt:
-            print("Quitting...")
+            print("\nQuitting...")
             Notification.close_db()
             raise SystemExit # Equivalent to quit() or exit()
         except Exception as e:
