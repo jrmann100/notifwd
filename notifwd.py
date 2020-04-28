@@ -2,29 +2,21 @@
 # Copyright Jordan Mann
 # Last Updated 28 April 2020
 
+__version__ = "0.2"
+
 import subprocess, sqlite3
 from datetime import datetime
 from xml.etree.ElementTree import fromstring as parseXML
 import sched, time
 import requests
-from sys import argv
-import getopt
-
-global PROWL_API_KEY, UPDATE_FREQUENCY, NOTIFICATION_CACHE
-# Your Prowl API key, found at https://www.prowlapp.com/api_settings.php
-# This should probably be a command-line argument or in a separate file.
-PROWL_API_KEY = ""
-# How often to check for new notifications, in seconds.
-UPDATE_FREQUENCY = 5
-# How many recent notifications to check.
-# This should be the maximum number you'd receive in UPDATE_FREQUENCY seconds.
-NOTIFICATION_CACHE_SIZE = 5
+from sys import argv, maxsize
+import argparse, os
 
 # I have been writing a lot of Java and am probably not supposed to
 # put everything into one class like this.
 class Notification:
     @staticmethod
-    def setup(argv):
+    def splash():
         print("""
   _   _       _   _ _____             _ 
  | \ | | ___ | |_(_)  ___|_      ____| |
@@ -32,7 +24,44 @@ class Notification:
  | |\  | (_) | |_| |  _|  \ V  V / (_| |
  |_| \_|\___/ \__|_|_|     \_/\_/ \__,_|
 
-NotiForward by Jordan Mann. Starting up... """, end="")
+notifwd by Jordan Mann. Starting up... """, end="")
+
+    @staticmethod
+    def usage():
+        print("""
+notifwd
+usage: notifwd [-h] [-s] [--api-key PROWL_API_KEY] [--frequency FREQ]
+
+""")
+    @staticmethod
+    def setup(argv):
+        parser = argparse.ArgumentParser(
+            description="notifwd v%s - macOS notification forwarder" % __version__,
+            prog="notifwd")
+        parser.add_argument("--api-key", "-k",
+                            help="Prowl API key",
+                            default=os.environ.get("PROWL_API_KEY"))
+        parser.add_argument("--frequency", "-f", type=int,
+                            help="Frequency, in seconds, to check for new notifications.",
+                            default=60)
+        parser.add_argument("--version", action="store_true",
+                            help="Get program version")
+        parser.add_argument("--silent", "-s", action="store_true")
+        args = parser.parse_args()
+        if args.version:
+            print("notifwd v%s" % __version__)
+            raise SystemExit()
+        if args.api_key is None:
+            parser.error("no API key specified. Is $PROWL_API_KEY defined?")
+        if args.frequency <= 0:
+            parser.error("frequency must be a positive integer.")
+
+# Need error handling for freq, and to incorporate silent.
+        
+        Notification.API_KEY = args.api_key
+        Notification.FREQ = args.frequency
+        
+        Notification.splash()
         # Get the system temp directory macOS is caching to.
         tmp_path = subprocess.run(["getconf", "DARWIN_USER_DIR"], stdout=subprocess.PIPE).stdout
         # Locate the database; start SQLite.
@@ -53,15 +82,15 @@ NotiForward by Jordan Mann. Starting up... """, end="")
             print(".", end="")
             for notification in Notification.update_recents():
                 # If the notification is new, send it.
-                if (notification.date > Notification.last_sent_date):
+                if notification.date > Notification.last_sent_date:
                     notification.send()
                     Notification.last_sent_date = notification.date
             # Schedule to run periodically.
-            s.enter(UPDATE_FREQUENCY, 1, check_recents, (s,))
+            s.enter(Notification.FREQ, 1, check_recents, (s,))
         # Schedule to run on start.
         s.enter(0, 1, check_recents, (s,))
         try:
-            print("Starting scheduler. Update frequency is", UPDATE_FREQUENCY, "seconds and checking last", NOTIFICATION_CACHE_SIZE, "notifications...", end="")
+            print("Starting scheduler. Update frequency is", Notification.FREQ, "seconds and checking last", 5, "notifications...", end="")
             s.run()
         except KeyboardInterrupt:
             print("Quitting...")
@@ -124,7 +153,7 @@ NotiForward by Jordan Mann. Starting up... """, end="")
         Notification.recents.clear()
         # Find most recent notifications.
         Notification.cursor.execute("SELECT data FROM (SELECT * FROM record ORDER BY delivered_date DESC LIMIT " +
-                                    str(NOTIFICATION_CACHE_SIZE) + ")")
+                                    str(5) + ")")
         results = Notification.cursor.fetchall()
         # Iterate over returned SQL data.
         for result in results:
@@ -136,18 +165,18 @@ NotiForward by Jordan Mann. Starting up... """, end="")
             this.xml = xml.decode('utf-8')
             # Iterate through nested dictionaries in the notification data to find the values we need.
             for [key, value] in Notification.iterate_dict(parseXML(xml)[0]):
-                if (key.text == "app"):
+                if key.text == "app":
                     this.identifier = value.text
                     this.app = Notification.lookup_display_name(this.identifier)
-                elif (key.text == "date"):
+                elif key.text == "date":
                     this.date = float(value.text)
                     this.ago = Notification.time_ago(float(value.text))
-                elif (key.text == "req"):
+                elif key.text == "req":
                     for [subkey, subvalue] in Notification.iterate_dict(value):
-                        if (subkey.text == "titl" and subvalue.text != None):
+                        if subkey.text == "titl" and subvalue.text != None:
                             this.title = subvalue.text
                         # Merge subtitle and body - yes, notifications have three lines.
-                        if ((subkey.text == "subt" or subkey.text == "body") and subvalue.text != None):
+                        if (subkey.text == "subt" or subkey.text == "body") and subvalue.text != None:
                             this.subtitle += subvalue.text
         # This lets you iterate over the new notifications where you call it.
         return Notification.recents
@@ -156,10 +185,10 @@ NotiForward by Jordan Mann. Starting up... """, end="")
     def send(self):
         print("\nSending new notification!", self)
         r = requests.post("https://api.prowlapp.com/publicapi/add",
-                          data={"apikey": PROWL_API_KEY, "application": self.app,
+                          data={"apikey": Notification.API_KEY, "application": self.app,
                                 "event": self.title, "description": self.subtitle})
         
-        if (r.status_code != 200):
+        if r.status_code != 200:
             print("Received unexpected status code", r.status_code, r.reason, "response:\n", r.text)
         
 
@@ -167,5 +196,5 @@ NotiForward by Jordan Mann. Starting up... """, end="")
     def close_db():
         Notification.connection.close()
 
-if (__name__ == "__main__"):
-    Notification.main(argv[1:])
+if __name__ == "__main__":
+    Notification.main(argv)
