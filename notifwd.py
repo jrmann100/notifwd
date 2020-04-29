@@ -7,7 +7,7 @@ __version__ = "0.3"
 
 import subprocess, sqlite3
 from datetime import datetime
-from xml.etree.ElementTree import fromstring as parseXML
+import plistlib
 import sched, time
 import requests
 from sys import argv, maxsize, stdout
@@ -32,7 +32,10 @@ class Notification:
                             default=60)
         parser.add_argument("--version", action="store_true",
                             help="Get program version")
-        parser.add_argument("--silent", "-s", action="store_true")
+        parser.add_argument("--silent", "-s",
+                            help="Don't display the splash screen or verbose logging.", action="store_true")
+        parser.add_argument("--test", "-t",
+                            help="Display a test notification on startup.", action="store_true")
         args = parser.parse_args()
         if args.version:
             print("notifwd v%s" % __version__)
@@ -45,6 +48,7 @@ class Notification:
         Notification.API_KEY = args.api_key
         Notification.FREQ = args.frequency
         Notification.SILENT = args.silent
+        Notification.TEST = args.test
         if not Notification.SILENT: print("""
   _   _       _   _ _____             _ 
  | \ | | ___ | |_(_)  ___|_      ____| |
@@ -60,7 +64,12 @@ notifwd by Jordan Mann. Starting up... """, end="")
         Notification.connection = sqlite3.connect(db_path)
         Notification.cursor = Notification.connection.cursor()
         # Set the most recent notification ID to the ID of the last-displayed notification.
-        Notification.last_id = Notification.get_notification_data(0)[0]
+        last_data = Notification.get_notification_data(0)
+        Notification.last_id = last_data[0]
+        Notification.last_date = last_data[6]
+        if Notification.TEST:
+            print("Sending test notification... ", end="")
+            subprocess.run(["osascript", "-e", "display notification time string of (current date) with title \"The time is\" subtitle \"Most definitely\""])
         if not Notification.SILENT: print("done.")
 
     @staticmethod
@@ -100,15 +109,6 @@ notifwd by Jordan Mann. Starting up... """, end="")
         # I know there is a better way to do this, but I've spent an hour with my limited SQLite knowledge and it isn't enough.
         return Notification.cursor.execute("SELECT * FROM (SELECT * FROM record ORDER BY rec_id DESC LIMIT %d) ORDER BY rec_id LIMIT 1" % (n + 1)).fetchone()
     
-    # Get the <key>, <value> pairs of an XML "dictionary".
-    @staticmethod
-    def iterate_dict(parsed_dict):
-        pairs = list()
-        for i in range(0, int(len(parsed_dict) / 2)):
-            pair = [parsed_dict[i * 2], parsed_dict[i * 2 + 1]]
-            pairs.append(pair)
-        return pairs
-    
     # Get an application name like "Messages" from an identifier like "com.apple.Messages"
     # that comes with the notification.
     @staticmethod
@@ -122,56 +122,59 @@ notifwd by Jordan Mann. Starting up... """, end="")
         self.identifier = ""
         self.app = ""
         self.title = ""
-        # Includes both subtitle and body. See check().
         self.subtitle = ""
+        self.body = ""
+        # Combined body and subtitle.
+        self.text = ""
         self.ago = 0
         self.date = 0
         self.xml = ""
 
-    # Display notification info with non-ASCII characters removed, for logging.
+    # Display notification info, for logging.
     def __str__(self):
         return ("There was a notification %d minutes ago from %s: %s (%s...)" % (
-            (int(self.ago/60)), self.app, self.title.strip().encode('ascii', 'ignore').decode('ascii'),
-            self.subtitle.strip().encode('ascii', 'ignore').decode('ascii')[:15]))
+            (int(self.ago/60)), self.app, self.text.strip(),
+            self.subtitle.strip()[:15]))
 
     # Collect recent notifications.
     @staticmethod
     def check():
-# I have seen this new method, on one occasion, run back through hundreds of
-# previous notifications. I have not fully identified why yet.
+        # Oh, I've figured it out. We need to cross-check by timestamps, or dismissed notifications cause the system to never encounter into last_id.
         n = 0
         sql_data = Notification.get_notification_data(n)
         newest_id = sql_data[0]
-        while sql_data[0] != Notification.last_id:
+        newest_date = sql_data[6]
+        while sql_data[0] != Notification.last_id and sql_data[6] >= Notification.last_date:
+            print("N is ", n, "last id", Notification.last_id, "newest id", newest_id, "this id", sql_data[0])
             Notification.send(Notification.parse_notification(sql_data[3]))
             n += 1
             sql_data = Notification.get_notification_data(n)
         Notification.last_id = newest_id
+        Notification.last_date = newest_date
 
     # Create a notification from raw plist data. The returned notification can then be sent.
     @staticmethod
     def parse_notification(raw_plist):
-        # Create a notification from raw plist data. This can then be sent.
         this = Notification()
-        # Parse raw database data, which is an Apple plist, into XML. Then parse the XML.
-        xml = subprocess.run(["plutil", "-convert", "xml1", "-", "-o", "-"],
-                             check=True, input=raw_plist, stdout=subprocess.PIPE).stdout
-        this.xml = xml.decode('utf-8')
-        # Iterate through nested dictionaries in the notification data to find the values we need.
-        for [key, value] in Notification.iterate_dict(parseXML(xml)[0]):
-            if key.text == "app":
-                this.identifier = value.text
-                this.app = Notification.lookup_display_name(this.identifier)
-            elif key.text == "date":
-                this.date = float(value.text)
-                this.ago = Notification.coredata_now() - float(value.text)
-            elif key.text == "req":
-                for [subkey, subvalue] in Notification.iterate_dict(value):
-                    if subkey.text == "titl" and subvalue.text != None:
-                        this.title = subvalue.text
-                    # Merge subtitle and body - yes, notifications have three lines.
-                    if (subkey.text == "subt" or subkey.text == "body") and subvalue.text != None:
-                        this.subtitle += subvalue.text
+        # Parse raw database data, which is an Apple plist.
+        data = plistlib.loads(raw_plist)
+        for key, value in data.items():
+            if key == "app":
+                this.identifier = value
+                this.app = Notification.lookup_display_name(value)
+            elif key == "date":
+                this.date = float(value)
+                this.ago = Notification.coredata_now() - float(value)
+            elif key == "req":
+                for subkey, subvalue in value.items():
+                    if subkey == "titl" and subvalue != None:
+                        this.title = subvalue
+                    if subkey == "subt" and subvalue != "":
+                        this.subtitle = subvalue
+                    if subkey == "body" and subvalue != "":
+                        this.body = subvalue
+        # Merge subtitle and body - yes, notifications have three lines.
+        this.text = this.subtitle + "\u2014" + this.body
         return this
 
     # Send a notification to the Prowl API.
@@ -179,7 +182,7 @@ notifwd by Jordan Mann. Starting up... """, end="")
         if not Notification.SILENT: print("\nSending new notification!", self)
         r = requests.post("https://api.prowlapp.com/publicapi/add",
                           data={"apikey": Notification.API_KEY, "application": self.app,
-                                "event": self.title, "description": self.subtitle})
+                                "event": self.title, "description": self.text})
         
         if r.status_code != 200:
             print("Received unexpected status code", r.status_code, r.reason, "response:\n", r.text)
