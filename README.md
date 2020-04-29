@@ -22,7 +22,7 @@ Oh, and this script was written in Python 3.7. You need Python 3. That's importa
 Notifwd periodically checks macOS' Notification Center database for newly-recorded notifications. (Notifications are recorded after their popups disappear). It parses those notifications, additionally determining the application's name and how long ago the notification was sent, and sends them to the Prowl API. 
 
 ## Installation and Configuration: How do I set up notifwd?
-I'm making this non-developer-friendly. At some point I may bundle the application and add a GUI.
+I'm making these instructions non-developer-friendly. At some point I may bundle the script into an application and add a GUI.
 
 Open the macOS Terminal app, located at `/Applications/Utilities/` in the Finder.
 `cd ~/Desktop` or wherever you want to download the script to.
