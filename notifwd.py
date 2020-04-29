@@ -19,13 +19,6 @@ from os import environ
 class Notification:
     
     @staticmethod
-    def usage():
-        print("""
-notifwd
-usage: notifwd [-h] [-s] [--api-key PROWL_API_KEY] [--frequency FREQ]
-
-""")
-    @staticmethod
     def setup(argv):
         # Parse the command-line arguments.
         parser = argparse.ArgumentParser(
