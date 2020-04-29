@@ -145,7 +145,7 @@ notifwd by Jordan Mann. Starting up... """, end="")
         newest_id = sql_data[0]
         newest_date = sql_data[6]
         while sql_data[0] != Notification.last_id and sql_data[6] >= Notification.last_date:
-            print("N is ", n, "last id", Notification.last_id, "newest id", newest_id, "this id", sql_data[0])
+            # print("N is ", n, "last id", Notification.last_id, "newest id", newest_id, "this id", sql_data[0])
             Notification.send(Notification.parse_notification(sql_data[3]))
             n += 1
             sql_data = Notification.get_notification_data(n)
