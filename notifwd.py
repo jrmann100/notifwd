@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Notiforward for macOS
+# notifwd for macOS
 # Copyright Jordan Mann
 # Last Updated 28 April 2020
 
