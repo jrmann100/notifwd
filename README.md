@@ -25,16 +25,24 @@ Notifwd periodically checks macOS' Notification Center database for newly-record
 I'm making these instructions non-developer-friendly. At some point I may bundle the script into an application and add a GUI.
 
 Open the macOS Terminal app, located at `/Applications/Utilities/` in the Finder.
+
 `cd ~/Desktop` or wherever you want to download the script to.
-`git clone https://github.com/jrmann100/notifwd.git` to download this repository and `cd notifwd`
+
+`git clone https://github.com/jrmann100/notifwd.git` to download this repository and `cd notifwd`.
+
 Run `./notifwd.py` in the cloned repository.
+
 Create your Prowl API key by going to [Prowl's API Settings page](https://www.prowlapp.com/api_settings.php).
+
 Copy the key, and make it visible to the script by running `export PROWL_API_KEY=[your key here]`
+
 Alternatively pass the key to the script by running `./notifwd.py --api-key [your key here]`
 
 Run the script with `--silent` to disable verbose outputs and that fancy splash screen.
+
 Run the script with `--frequency [seconds]` to specify how often the script should check for new notifications.
-Run the script with `--version` to get its version. You can always `git pull` for the newest version.
+
+Run the script with `--version` to get its version. (You can always `git pull` for the newest version.)
 ## Contributing: I love notifwd, but I have a problem with it!
 I'm so sorry, and I hope I can help. Please submit any issues or suggestions you have for this script on GitHub.
 
