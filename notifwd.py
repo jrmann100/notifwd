@@ -3,7 +3,7 @@
 # Copyright Jordan Mann
 # Last Updated 28 April 2020
 
-__version__ = "0.3"
+__version__ = "0.4"
 
 import subprocess, sqlite3
 from datetime import datetime
@@ -13,6 +13,7 @@ import requests
 from sys import argv, maxsize, stdout
 import argparse
 from os import environ
+from itertools import cycle
 
 # I have been writing a lot of Java and am probably not supposed to
 # put everything into one class like this.
@@ -76,16 +77,23 @@ notifwd by Jordan Mann. Starting up... """, end="")
     def main(argv):
         Notification.setup(argv)
         s = sched.scheduler(time.time, time.sleep)
+        #https://stackoverflow.com/a/22616059/9068081
+        spinner = cycle(['*','-', '/', '|', '\\','-','*'])
         def scheduled_update(s):
-            if not Notification.SILENT: print(".", end="")
-            stdout.flush() # Need this when running in thread because output is buffered. Not sure exactly why.
+            if not Notification.SILENT:
+                    for i in range(0,7):
+                        time.sleep(0.1)
+                        stdout.write(next(spinner))
+                        stdout.flush()
+                        stdout.write('\b')
+
             Notification.check()
             # Schedule to run periodically.
-            s.enter(Notification.FREQ, 1, scheduled_update, (s,))
+            s.enter(Notification.FREQ - 0.7, 1, scheduled_update, (s,))
         # Schedule to run on start.
         s.enter(0, 1, scheduled_update, (s,))
         try:
-            print("Starting scheduler. Update frequency is %d second%s." % (Notification.FREQ, ("s" if Notification.FREQ != 1 else "")), end="")
+            print("Starting scheduler. Update frequency is %d second%s. " % (Notification.FREQ, ("s" if Notification.FREQ != 1 else "")), end="")
             stdout.flush() # See note above.
             s.run()
         except KeyboardInterrupt:
@@ -132,9 +140,8 @@ notifwd by Jordan Mann. Starting up... """, end="")
 
     # Display notification info, for logging.
     def __str__(self):
-        return ("There was a notification %d minutes ago from %s: %s (%s...)" % (
-            (int(self.ago/60)), self.app, self.text.strip(),
-            self.subtitle.strip()[:15]))
+        return ("%d minutes ago from %s: \"%s\"" % (
+            (int(self.ago/60)), self.app, self.title.strip()))
 
     # Collect recent notifications.
     @staticmethod
@@ -143,8 +150,10 @@ notifwd by Jordan Mann. Starting up... """, end="")
         n = 0
         sql_data = Notification.get_notification_data(n)
         newest_id = sql_data[0]
-        newest_date = sql_data[6]
-        while sql_data[0] != Notification.last_id and sql_data[6] >= Notification.last_date:
+        # Either delivered_date or request_date will be filled in. Don't yet want to peek into what those mean.
+        newest_date = (sql_data[6] if sql_data[6] != None else sql_data[4])
+        # print("DEBUG", (sql_data[6] if sql_data[6] != None else sql_data[4]), Notification.last_date)
+        while sql_data[0] != Notification.last_id and (sql_data[6] if sql_data[6] != None else sql_data[4]) >= Notification.last_date:
             # print("N is ", n, "last id", Notification.last_id, "newest id", newest_id, "this id", sql_data[0])
             Notification.send(Notification.parse_notification(sql_data[3]))
             n += 1
@@ -160,26 +169,26 @@ notifwd by Jordan Mann. Starting up... """, end="")
         data = plistlib.loads(raw_plist)
         for key, value in data.items():
             if key == "app":
-                this.identifier = value
-                this.app = Notification.lookup_display_name(value)
+                this.identifier = value or ""
+                this.app = Notification.lookup_display_name(value) or ""
             elif key == "date":
                 this.date = float(value)
                 this.ago = Notification.coredata_now() - float(value)
             elif key == "req":
                 for subkey, subvalue in value.items():
-                    if subkey == "titl" and subvalue != None:
-                        this.title = subvalue
-                    if subkey == "subt" and subvalue != "":
-                        this.subtitle = subvalue
-                    if subkey == "body" and subvalue != "":
-                        this.body = subvalue
+                    if subkey == "titl":
+                        this.title = subvalue or ""
+                    if subkey == "subt":
+                        this.subtitle = subvalue or ""
+                    if subkey == "body":
+                        this.body = subvalue or ""
         # Merge subtitle and body - yes, notifications have three lines.
-        this.text = this.subtitle + "\u2014" + this.body
+        this.text = this.subtitle + ("\u2014" if this.subtitle else "") + this.body
         return this
 
     # Send a notification to the Prowl API.
     def send(self):
-        if not Notification.SILENT: print("\nSending new notification!", self)
+        if not Notification.SILENT: print("\nSending notification from", self)
         r = requests.post("https://api.prowlapp.com/publicapi/add",
                           data={"apikey": Notification.API_KEY, "application": self.app,
                                 "event": self.title, "description": self.text})
