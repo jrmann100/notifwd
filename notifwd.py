@@ -66,8 +66,9 @@ notifwd by Jordan Mann. Starting up... """, end="")
         Notification.cursor = Notification.connection.cursor()
         # Set the most recent notification ID to the ID of the last-displayed notification.
         last_data = Notification.get_notification_data(0)
-        Notification.last_id = last_data[0]
-        Notification.last_date = last_data[6]
+        if last_data:
+            Notification.last_id = last_data[0]
+            Notification.last_date = last_data[6]
         if Notification.TEST:
             print("Sending test notification... ", end="")
             subprocess.run(["osascript", "-e", "display notification time string of (current date) with title \"The time is\" subtitle \"Most definitely\""])
@@ -149,17 +150,18 @@ notifwd by Jordan Mann. Starting up... """, end="")
         # Oh, I've figured it out. We need to cross-check by timestamps, or dismissed notifications cause the system to never encounter into last_id.
         n = 0
         sql_data = Notification.get_notification_data(n)
-        newest_id = sql_data[0]
-        # Either delivered_date or request_date will be filled in. Don't yet want to peek into what those mean.
-        newest_date = (sql_data[6] if sql_data[6] != None else sql_data[4])
-        # print("DEBUG", (sql_data[6] if sql_data[6] != None else sql_data[4]), Notification.last_date)
-        while sql_data[0] != Notification.last_id and (sql_data[6] if sql_data[6] != None else sql_data[4]) >= Notification.last_date:
-            # print("N is ", n, "last id", Notification.last_id, "newest id", newest_id, "this id", sql_data[0])
-            Notification.send(Notification.parse_notification(sql_data[3]))
-            n += 1
-            sql_data = Notification.get_notification_data(n)
-        Notification.last_id = newest_id
-        Notification.last_date = newest_date
+        if sql_data:
+            newest_id = sql_data[0]
+            # Either delivered_date or request_date will be filled in. Don't yet want to peek into what those mean.
+            newest_date = (sql_data[6] if sql_data[6] != None else sql_data[4])
+            # print("DEBUG", (sql_data[6] if sql_data[6] != None else sql_data[4]), Notification.last_date)
+            while sql_data[0] != Notification.last_id and (sql_data[6] if sql_data[6] != None else sql_data[4]) >= Notification.last_date:
+                # print("N is ", n, "last id", Notification.last_id, "newest id", newest_id, "this id", sql_data[0])
+                Notification.send(Notification.parse_notification(sql_data[3]))
+                n += 1
+                sql_data = Notification.get_notification_data(n)
+            Notification.last_id = newest_id
+            Notification.last_date = newest_date
 
     # Create a notification from raw plist data. The returned notification can then be sent.
     @staticmethod
