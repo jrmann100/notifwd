@@ -61,7 +61,10 @@ notifwd by Jordan Mann. Starting up... """, end="")
         # Get the system temp directory macOS is caching to.
         tmp_path = subprocess.run(["getconf", "DARWIN_USER_DIR"], stdout=subprocess.PIPE).stdout
         # Locate the database; start SQLite.
-        db_path = tmp_path.decode("utf-8").rstrip() + "com.apple.notificationcenter/db2/db"
+        db_path = tmp_path.decode("utf-8").rstrip() + "com.apple.NotificationCenter/db2/db"
+        db_path_exists = subprocess.run(["stat", db_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
+        if (!(bool(db_path_exists)):
+            db_path = tmp_path.decode("utf-8").rstrip() + "com.apple.notificationcenter/db2/db"
         Notification.connection = sqlite3.connect(db_path)
         Notification.cursor = Notification.connection.cursor()
         # Set the most recent notification ID to the ID of the last-displayed notification.
