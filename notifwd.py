@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # notifwd for macOS
-# Copyright Jordan Mann
-# Last Updated 28 April 2020
+# Copyright Jordan Mann,
+# with credit to contributors on GitHub:
+# https://github.com/jrmann100/notifwd/pulls
 
-__version__ = "0.4"
+__version__ = "0.5"
 
 import subprocess, sqlite3
 from datetime import datetime
